@@ -22,6 +22,29 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 from config import OLLAMA_URL, SKAI_HOME, MAX_FILES, CHAT_SYSTEM, TOOL_NAMES
 from memory import load_memory, save_memory, memory_to_context, update_memory
 
+# SKAI_ Memory: the memory shared by all SKAI apps (optional - everything works without it).
+try:
+    import skai_memory_bridge as _shared
+except ImportError:
+    _shared = None
+_SHARED = None  # opened on first use: this app's handle to the shared memory
+
+
+def shared_recall(question: str) -> str:
+    """What the other SKAI apps know about this question ('' when nothing / not installed)."""
+    global _SHARED
+    if _shared is None:
+        return ""
+    if _SHARED is None:
+        _SHARED = _shared.open_memory("skai") or False
+    return _shared.recall_text(_SHARED, question) if _SHARED else ""
+
+
+def shared_remember(question: str, reply: str) -> None:
+    """Keep the exchange in this app's own notes of the shared memory."""
+    if _SHARED:
+        _shared.remember_turn(_SHARED, "skai", question, reply)
+
 # ─── Model selection ─────────────────────────────────────────
 # Query the local Ollama API to list all available models and pick
 # the heaviest one (largest size on disk) as the best-performing model.
@@ -508,7 +531,7 @@ def folder_snapshot() -> str:
     return "SkAi_home/\n" + "\n".join(tree_lines)
 
 
-def inject_snapshot(messages: list) -> None:
+def inject_snapshot(messages: list, shared: str = "") -> None:
     """
     Updates messages[0] (the system message) in-place with a fresh folder snapshot.
     Called automatically before every model call so SkAi always has up-to-date context.
@@ -521,6 +544,8 @@ def inject_snapshot(messages: list) -> None:
         CHAT_SYSTEM +
         f"\n\n--- Current state of SkAi_home ---\n{snapshot}\n---"
     )
+    if shared:
+        messages[0]["content"] += "\n\n" + shared
 
 
 # ─── Startup context injection ────────────────────────────────────────────────
@@ -599,7 +624,7 @@ def main():
         # ── Refresh folder snapshot in the system message ─────────────────────
         # Updates messages[0] with the real current state of SkAi_home so SkAi
         # always knows what files exist before it even starts thinking.
-        inject_snapshot(messages)
+        inject_snapshot(messages, shared_recall(clean_input))
 
         # ── Ask the model what to do ──────────────────────────────────────────
         print("SkAi is thinking...")
@@ -692,6 +717,7 @@ def main():
                 })
                 memory = update_memory(memory, clean_input, tool_summary, ask_ollama)
                 save_memory(memory)
+                shared_remember(clean_input, tool_summary)
 
         else:
             # Normal text response (or error message after retries)
@@ -699,6 +725,7 @@ def main():
             messages.append({"role": "assistant", "content": llm_response})
             memory = update_memory(memory, clean_input, llm_response, ask_ollama)
             save_memory(memory)
+            shared_remember(clean_input, llm_response)
 
 
 if __name__ == "__main__":
