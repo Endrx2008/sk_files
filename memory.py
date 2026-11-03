@@ -8,9 +8,9 @@ from datetime import datetime
 
 # ─── Costanti ─────────────────────────────────────────────────────────────────
 
-# Il file di memoria si trova nella stessa cartella dello script (non in SkAi_home),
+# Il file di memoria si trova nella stessa cartella dello script (non in SkFiles_home),
 # così l'AI non può accedervi né eliminarlo per sbaglio durante le operazioni sui file.
-MEMORY_FILE = Path(__file__).parent / ".SkAi_memory.json"
+MEMORY_FILE = Path(__file__).parent / ".SkFiles_memory.json"
 
 # Struttura di default della memoria
 _DEFAULT_MEMORY: dict = {
@@ -115,7 +115,7 @@ def memory_to_context(memory: dict) -> str:
     if not lines:
         return ""
 
-    return "--- SkAi's memory (from previous sessions) ---\n" + "\n".join(lines) + "\n---"
+    return "--- SkFiles's memory (from previous sessions) ---\n" + "\n".join(lines) + "\n---"
 
 
 # ─── Memory Update ────────────────────────────────────────────────────────────
@@ -127,7 +127,7 @@ def update_memory(memory: dict, user_input: str, assistant_reply: str, ask_ollam
     Parametri:
         memory          : dizionario memoria corrente
         user_input      : messaggio dell'utente in questo turno
-        assistant_reply : risposta di SkAi in questo turno
+        assistant_reply : risposta di SkFiles in questo turno
         ask_ollama_fn   : funzione ask_ollama da main.py (passata per evitare import ciclici)
 
     Restituisce il dizionario memoria aggiornato (modificato in-place e restituito).
@@ -141,7 +141,7 @@ def update_memory(memory: dict, user_input: str, assistant_reply: str, ask_ollam
             f"Current memory:\n{current_memory_str}\n\n"
             f"New exchange:\n"
             f"User: {user_input}\n"
-            f"SkAi: {assistant_reply[:500]}"  # tronca per non sprecare token
+            f"SkFiles: {assistant_reply[:500]}"  # tronca per non sprecare token
         )},
     ]
 

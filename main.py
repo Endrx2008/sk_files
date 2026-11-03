@@ -19,7 +19,7 @@ from pathlib import Path
 sys.stdin.reconfigure(encoding="utf-8", errors="replace")
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-from config import OLLAMA_URL, SKAI_HOME, MAX_FILES, CHAT_SYSTEM, TOOL_NAMES
+from config import OLLAMA_URL, SK_FILES_HOME, MAX_FILES, CHAT_SYSTEM, TOOL_NAMES
 from memory import load_memory, save_memory, memory_to_context, update_memory
 
 # SKAI_ Memory: the memory shared by all SKAI apps (optional - everything works without it).
@@ -36,28 +36,28 @@ def shared_recall(question: str) -> str:
     if _shared is None:
         return ""
     if _SHARED is None:
-        _SHARED = _shared.open_memory("skai") or False
+        _SHARED = _shared.open_memory("sk_files") or False
     return _shared.recall_text(_SHARED, question) if _SHARED else ""
 
 
 def shared_remember(question: str, reply: str) -> None:
     """Keep the exchange in this app's own notes of the shared memory."""
     if _SHARED:
-        _shared.remember_turn(_SHARED, "skai", question, reply)
+        _shared.remember_turn(_SHARED, "sk_files", question, reply)
 
 # ─── Model selection ─────────────────────────────────────────
 # Query the local Ollama API to list all available models and pick
 # the heaviest one (largest size on disk) as the best-performing model.
-# If Ollama is unreachable or returns no models, skai exits cleanly.
+# If Ollama is unreachable or returns no models, sk_files exits cleanly.
 
 def _ai_disabled_exit(detail: str = None) -> None:
-    """Called when no model can be selected — skai exits cleanly."""
+    """Called when no model can be selected — sk_files exits cleanly."""
     print()
     print("=" * 57)
     print("  AI features are disabled.")
     print()
     print("  It looks like you turned off AI in the skai settings.")
-    print("  Without a selected model, skai cannot function.")
+    print("  Without a selected model, sk_files cannot function.")
     if detail:
         print(f"  (technical detail: {detail})")
     print()
@@ -348,7 +348,7 @@ def ask_ollama_with_retry(messages: list, user_input: str, force_tool: bool = Fa
         retry_messages = [
             {"role": "system", "content": _RETRY_SYSTEM},
             {"role": "user",   "content": (
-                f"Current state of SkAi_home:\n{snapshot}\n\n"
+                f"Current state of SkFiles_home:\n{snapshot}\n\n"
                 f"User request: {user_input}\n\n"
                 f"{_RETRY_EXAMPLE_MULTI}"
             )},
@@ -497,19 +497,19 @@ def dispatch_web_search(params: dict) -> str:
 
 def folder_snapshot() -> str:
     """
-    Reads the full tree of SkAi_home recursively and returns a compact
+    Reads the full tree of SkFiles_home recursively and returns a compact
     string to inject into the system prompt.
-    Uses rglob so SkAi sees files inside subfolders too, not just the top level.
+    Uses rglob so SkFiles sees files inside subfolders too, not just the top level.
 
     Example output:
-      SkAi_home/
+      SkFiles_home/
         folder1/
           ciao.txt (0 bytes)
         folder2/
         file1.txt (144 bytes)
     """
-    if not SKAI_HOME.exists():
-        return "SkAi_home does not exist yet."
+    if not SK_FILES_HOME.exists():
+        return "SkFiles_home does not exist yet."
 
     def _tree(path: Path, indent: int) -> list[str]:
         lines = []
@@ -524,25 +524,25 @@ def folder_snapshot() -> str:
                 lines.append(f"{pad}{child.name} ({child.stat().st_size} bytes)")
         return lines
 
-    tree_lines = _tree(SKAI_HOME, 1)
+    tree_lines = _tree(SK_FILES_HOME, 1)
     if not tree_lines:
-        return "SkAi_home is currently empty."
+        return "SkFiles_home is currently empty."
 
-    return "SkAi_home/\n" + "\n".join(tree_lines)
+    return "SkFiles_home/\n" + "\n".join(tree_lines)
 
 
 def inject_snapshot(messages: list, shared: str = "") -> None:
     """
     Updates messages[0] (the system message) in-place with a fresh folder snapshot.
-    Called automatically before every model call so SkAi always has up-to-date context.
+    Called automatically before every model call so SkFiles always has up-to-date context.
 
-    Think of it like this: every time SkAi is about to speak, we whisper
+    Think of it like this: every time SkFiles is about to speak, we whisper
     "hey, here's what's in the folder right now" into its ear first.
     """
     snapshot = folder_snapshot()
     messages[0]["content"] = (
         CHAT_SYSTEM +
-        f"\n\n--- Current state of SkAi_home ---\n{snapshot}\n---"
+        f"\n\n--- Current state of SkFiles_home ---\n{snapshot}\n---"
     )
     if shared:
         messages[0]["content"] += "\n\n" + shared
@@ -554,7 +554,7 @@ def build_initial_messages(memory: dict) -> list:
     """
     Build the startup conversation history with:
     1. System prompt with instructions, tool definitions, and long-term memory.
-    2. Initial snapshot of the SkAi_home folder (already baked into system message).
+    2. Initial snapshot of the SkFiles_home folder (already baked into system message).
     """
     mem_context = memory_to_context(memory)
     system_content = CHAT_SYSTEM
@@ -566,7 +566,7 @@ def build_initial_messages(memory: dict) -> list:
         {
             "role": "user",
             "content": (
-                f"[SYSTEM] Working folder: {SKAI_HOME} | Max file limit: {MAX_FILES}"
+                f"[SYSTEM] Working folder: {SK_FILES_HOME} | Max file limit: {MAX_FILES}"
             ),
         },
         {
@@ -582,8 +582,8 @@ def build_initial_messages(memory: dict) -> list:
 
 def main():
     print("=" * 57)
-    print(f"  SkAi - File assistant powered by {MODEL}")
-    print(f"  Folder  : {SKAI_HOME}")
+    print(f"  SkFiles - File assistant powered by {MODEL}")
+    print(f"  Folder  : {SK_FILES_HOME}")
     print(f"  Limit   : {MAX_FILES} files")
     print(f"  Model   : {MODEL}")
     print("  Type 'exit' to quit, 'files' for a quick file list")
@@ -622,12 +622,12 @@ def main():
         messages.append({"role": "user", "content": clean_input})
 
         # ── Refresh folder snapshot in the system message ─────────────────────
-        # Updates messages[0] with the real current state of SkAi_home so SkAi
+        # Updates messages[0] with the real current state of SkFiles_home so SkFiles
         # always knows what files exist before it even starts thinking.
         inject_snapshot(messages, shared_recall(clean_input))
 
         # ── Ask the model what to do ──────────────────────────────────────────
-        print("SkAi is thinking...")
+        print("SkFiles is thinking...")
 
         if force_text:
             # Plain text mode: direct Ollama response, no retry logic
@@ -645,13 +645,13 @@ def main():
             for tc in tool_calls:
                 tool   = tc["tool"]
                 params = tc.get("params", {})
-                print(f"SkAi executing: {tool}({params})...")
+                print(f"SkFiles executing: {tool}({params})...")
                 result = dispatch_tool(tool, params)
                 print(f"  → {result[:120]}...")  # mostra solo l'inizio per non spammare
 
                 if tool == "web_search":
                     # I risultati web non vanno stampati crudi — li rimando al modello
-                    # così SkAi può leggerli e rispondere in modo naturale all'utente.
+                    # così SkFiles può leggerli e rispondere in modo naturale all'utente.
                     web_results_to_forward.append(result)
                 else:
                     results.append(f"{tool}: {result}")
@@ -671,7 +671,7 @@ def main():
                         f"no extra text."
                     ),
                 })
-                print("SkAi is reading the results...")
+                print("SkFiles is reading the results...")
                 final_answer = ask_ollama(messages, temperature=0.3, max_tokens=800)
 
                 # Il modello potrebbe rispondere con un tool call JSON (es. create_file)
@@ -681,7 +681,7 @@ def main():
                     # Se il follow-up è ancora un web_search, blocchiamo il loop:
                     # significa che il modello non ha trovato nulla e vuole riprovare.
                     if all(ftc["tool"] == "web_search" for ftc in follow_up_calls):
-                        print("\nSkAi: I couldn't find results for that search. "
+                        print("\nSkFiles: I couldn't find results for that search. "
                               "Try rephrasing your question with different keywords.")
                         messages.append({
                             "role": "assistant",
@@ -692,7 +692,7 @@ def main():
                         for ftc in follow_up_calls:
                             ftool   = ftc["tool"]
                             fparams = ftc.get("params", {})
-                            print(f"SkAi executing (follow-up): {ftool}({fparams})...")
+                            print(f"SkFiles executing (follow-up): {ftool}({fparams})...")
                             fresult = dispatch_tool(ftool, fparams)
                             print(f"  → {fresult}")
                             results.append(f"{ftool}: {fresult}")
@@ -703,8 +703,8 @@ def main():
                             ),
                         })
                 else:
-                    # È testo normale → stampiamolo come risposta di SkAi
-                    print(f"\nSkAi: {final_answer}")
+                    # È testo normale → stampiamolo come risposta di SkFiles
+                    print(f"\nSkFiles: {final_answer}")
                     messages.append({"role": "assistant", "content": final_answer})
 
             # Se c'erano anche tool normali (es. crea file + cerca web), aggiorna la cartella
@@ -721,7 +721,7 @@ def main():
 
         else:
             # Normal text response (or error message after retries)
-            print(f"\nSkAi: {llm_response}")
+            print(f"\nSkFiles: {llm_response}")
             messages.append({"role": "assistant", "content": llm_response})
             memory = update_memory(memory, clean_input, llm_response, ask_ollama)
             save_memory(memory)
