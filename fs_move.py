@@ -2,14 +2,14 @@
 # Licensed under GNU GPL v3 or later — see /usr/share/common-licenses/GPL-3
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from config import SKAI_HOME
+from config import SK_FILES_HOME
 from pathlib import Path
 import shutil
 
 
 def move_file(filename: str, destination: str) -> str:
     """
-    Moves a file to a subfolder inside SkAi_home.
+    Moves a file to a subfolder inside SkFiles_home.
     - filename:    name of the file (can include current subfolder, e.g. "sub/file.txt")
     - destination: target subfolder name (e.g. "hy")
 
@@ -20,14 +20,14 @@ def move_file(filename: str, destination: str) -> str:
 
     # Resolve source — strip any leading path components for safety, then search
     src_name = Path(filename).name
-    dest_dir = SKAI_HOME / Path(destination).name
+    dest_dir = SK_FILES_HOME / Path(destination).name
 
-    # Find the file anywhere inside SkAi_home
-    matches = list(SKAI_HOME.rglob(src_name))
+    # Find the file anywhere inside SkFiles_home
+    matches = list(SK_FILES_HOME.rglob(src_name))
     matches = [m for m in matches if m.is_file()]
 
     if not matches:
-        return f"File '{src_name}' not found anywhere in SkAi_home."
+        return f"File '{src_name}' not found anywhere in SkFiles_home."
 
     src = matches[0]  # take the first match
 

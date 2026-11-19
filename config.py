@@ -16,7 +16,7 @@ OLLAMA_URL = "http://localhost:11434/api/chat"
 # Schreibtisch. The name is not the thing — what actually defines the
 # desktop is the XDG_DESKTOP_DIR entry the desktop environment itself
 # uses to decide which folder to paint icons from. That is what gets
-# read here, so SkAi_home always lands on the folder the user really
+# read here, so SkFiles_home always lands on the folder the user really
 # sees behind their windows.
 
 # Localized names used as a last resort, only when a folder by that
@@ -50,7 +50,7 @@ def _home() -> Path:
 def _valid_desktop(path) -> Path | None:
     """A candidate counts only if it exists, is a directory, and isn't
     just $HOME itself — some misconfigured systems set XDG_DESKTOP_DIR
-    to the home folder, and dropping skai_home straight into $HOME
+    to the home folder, and dropping sk_files_home straight into $HOME
     would be a surprise, not a feature."""
     if not path:
         return None
@@ -132,7 +132,7 @@ def get_desktop_dir(create_fallback: bool = True) -> Path:
     xdg-user-dir, the user-dirs.dirs file, then known localized names
     that actually exist on disk. Falls back to ~/Desktop (created on
     demand) only when every source comes up empty — a headless or
-    minimal system with no XDG setup at all. Never raises: SkAi always
+    minimal system with no XDG setup at all. Never raises: SkFiles always
     gets a usable path back."""
     for source in (_desktop_from_env, _desktop_from_xdg_user_dir,
                    _desktop_from_user_dirs_file, _desktop_from_known_names):
@@ -152,13 +152,13 @@ def get_desktop_dir(create_fallback: bool = True) -> Path:
 # ─── Filesystem ───────────────────────────────────────────────────────────────
 MAX_FILES   = 100
 # Resolved once at import time and shared by every module that does
-# `from config import SKAI_HOME`, so the whole app agrees on one path.
+# `from config import SK_FILES_HOME`, so the whole app agrees on one path.
 DESKTOP_DIR = get_desktop_dir()
-SKAI_HOME   = DESKTOP_DIR / "skai_home"
+SK_FILES_HOME   = DESKTOP_DIR / "sk_files_home"
 
 # ─── System prompt ────────────────────────────────────────────────────────────
-CHAT_SYSTEM = """You are SkAi, a file management assistant.
-You have access to a folder called SkAi_home to manage text files.
+CHAT_SYSTEM = """You are SkFiles, a file management assistant.
+You have access to a folder called SkFiles_home to manage text files.
 When the user wants to operate on files, reply ONLY with pure JSON, nothing else:
 {"tool": "TOOL_NAME", "params": {...}}
 Available tools:
@@ -170,7 +170,7 @@ Available tools:
   read_file     → {"filename": "..."}
   move_file     → {"filename": "...", "destination": "subfolder_name"}
   list_files    → {}
-  Folder tools (subfolders inside SkAi_home only):
+  Folder tools (subfolders inside SkFiles_home only):
   create_dir    → {"dirname": "..."}
   rename_dir    → {"old": "...", "new": "..."}
   delete_dir    → {"dirname": "...", "force": true}
@@ -183,7 +183,7 @@ Rules:
 - Do NOT ask for confirmation before acting.
 - For normal conversation reply in American English without JSON.
 - If the user asks to delete all files, use the delete_all tool.
-- Folder tools only work on subfolders of SkAi_home, never on SkAi_home itself.
+- Folder tools only work on subfolders of SkFiles_home, never on SkFiles_home itself.
 - Use web_search when the user asks about current events, facts, or anything
   you don't know for certain. After getting the results, reply in plain text.
 - For web_search, NEVER copy the user's sentence as the query.
@@ -215,10 +215,10 @@ TOOL_NAMES = {
 
 
 if __name__ == "__main__":
-    # Quick self-check: python3 config.py prints where SkAi will work.
+    # Quick self-check: python3 config.py prints where SkFiles will work.
     print("XDG_DESKTOP_DIR env :", os.environ.get("XDG_DESKTOP_DIR"))
     print("xdg-user-dir        :", _desktop_from_xdg_user_dir())
     print("user-dirs.dirs      :", _desktop_from_user_dirs_file())
     print("known names         :", _desktop_from_known_names())
     print("→ desktop in use    :", DESKTOP_DIR)
-    print("→ SKAI_HOME         :", SKAI_HOME)
+    print("→ SK_FILES_HOME         :", SK_FILES_HOME)
