@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Enrico Miot (EndrX)
+# Copyright (C) 2026 Enrico Miot
 # Licensed under GNU GPL v3 or later — see the LICENSE file or <https://www.gnu.org/licenses/>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -54,10 +54,10 @@ def _ai_disabled_exit(detail: str = None) -> None:
     """Called when no model can be selected — sk_files exits cleanly."""
     print()
     print("=" * 57)
+    # Same text as every SKAI tool (skcommon.AI_UNAVAILABLE_MESSAGE in the launcher)
     print("  AI features are disabled.")
-    print()
-    print("  It looks like you turned off AI in the skai settings.")
-    print("  Without a selected model, sk_files cannot function.")
+    print("  It looks like you turned off AI in the SKAI settings.")
+    print("  Without a selected model, SKAI cannot function.")
     if detail:
         print(f"  (technical detail: {detail})")
     print()
@@ -83,8 +83,25 @@ def _ai_disabled_exit(detail: str = None) -> None:
             pass
     sys.exit(0)
 
+_PARAMETERS = re.compile(r"([\d.]+)\s*([KMBT]?)", re.IGNORECASE)
+_SCALE = {"": 1, "K": 1e3, "M": 1e6, "B": 1e9, "T": 1e12}
+
+
+def _parameter_count(model: dict) -> float:
+    """Parameters of one entry of /api/tags ("14.8B", "494.03M"); 0 when unknown."""
+    text = str((model.get("details") or {}).get("parameter_size") or "").strip()
+    match = _PARAMETERS.match(text)
+    if not match:
+        return 0.0
+    try:
+        return float(match.group(1)) * _SCALE[match.group(2).upper()]
+    except ValueError:
+        return 0.0
+
+
 def _load_model() -> str:
-    """Ask Ollama for all local models and return the one with the largest size."""
+    """The installed model with the most parameters, like every SKAI tool
+    (the size on disk only breaks ties)."""
     ollama_tags_url = "http://localhost:11434/api/tags"
     # The failure reason is only recorded here; _ai_disabled_exit() is called
     # OUTSIDE the try, otherwise any exception raised inside it (e.g. termios
@@ -96,8 +113,7 @@ def _load_model() -> str:
         resp.raise_for_status()
         models = resp.json().get("models", [])
         if models:
-            # Pick the model with the largest size (best performance)
-            best = max(models, key=lambda m: m.get("size", 0))
+            best = max(models, key=lambda m: (_parameter_count(m), m.get("size", 0) or 0))
             return best["name"]
         detail = "Ollama returned no installed models"
     except requests.exceptions.ConnectionError:
@@ -119,6 +135,20 @@ from fs_read   import read_file, list_files
 from fs_dirs   import create_dir, rename_dir, delete_dir, list_dirs, move_dir
 from fs_move   import move_file
 from web_access import web_search
+
+
+NOT_DELETED = "Cancelled: the user answered No, nothing was deleted."
+
+
+def confirm(question: str) -> bool:
+    """Every deletion asks the user first; Enter alone means No."""
+    try:
+        answer = input(f"  ⚠ {question} [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        answer = ""
+    yes = answer in ("y", "yes", "s", "si", "sì")
+    print("  → yes" if yes else "  → no, nothing deleted")
+    return yes
 
 # How many times to retry if the model doesn't return valid JSON.
 # qwen2.5:14b is good enough that this rarely triggers, but keep it as a safety net.
@@ -261,10 +291,10 @@ _QUERY_SYSTEM = (
 
 def build_search_query(user_input: str) -> str:
     """
-    Chiede al modello di estrarre 2-5 parole chiave dalla domanda dell'utente.
-    Questo evita che il modello copi la frase intera come query di ricerca.
+    Asks the model for 2-5 keywords of the user's question, so that the
+    search query is not the whole sentence copied.
 
-    Esempio:
+    Example:
         input:  "what happened in iran on 01/03/2025?"
         output: "Iran news March 2025"
     """
@@ -273,9 +303,8 @@ def build_search_query(user_input: str) -> str:
         {"role": "user",   "content": user_input},
     ]
     keywords = ask_ollama(msgs, temperature=0.0, max_tokens=20).strip()
-    # Sanity check: se il risultato è troppo lungo (>60 caratteri) è probabile
-    # che il modello abbia ancora copiato la frase intera — in quel caso
-    # prendiamo solo le prime 5 parole come fallback.
+    # Sanity check: over 60 characters the model probably copied the whole
+    # sentence again, so only its first 5 words are kept.
     if len(keywords) > 60:
         keywords = " ".join(keywords.split()[:5])
     return keywords
@@ -348,7 +377,7 @@ def ask_ollama_with_retry(messages: list, user_input: str, force_tool: bool = Fa
         retry_messages = [
             {"role": "system", "content": _RETRY_SYSTEM},
             {"role": "user",   "content": (
-                f"Current state of SkFiles_home:\n{snapshot}\n\n"
+                f"Current state of sk_files_home:\n{snapshot}\n\n"
                 f"User request: {user_input}\n\n"
                 f"{_RETRY_EXAMPLE_MULTI}"
             )},
@@ -393,12 +422,16 @@ def dispatch_tool(tool: str, params: dict) -> str:
             # Model sometimes passes {"files": [...]} for multiple deletions
             files = params.get("files")
             if files and isinstance(files, list):
+                if not confirm(f"Delete {', '.join(map(str, files))}?"):
+                    return NOT_DELETED
                 results = [delete_file(f) for f in files]
                 return "\n".join(results)
 
             # Model sometimes passes {"all": true} meaning "delete everything"
             all_flag = params.get("all") or params.get("all_files") or params.get("directory")
             if all_flag:
+                if not confirm("Delete ALL the files in sk_files_home?"):
+                    return NOT_DELETED
                 return delete_all_files()
 
             # Normal case: single file with various possible param names
@@ -406,6 +439,9 @@ def dispatch_tool(tool: str, params: dict) -> str:
                      or params.get("name") or params.get("path") or "")
             # If the model passed an absolute path, take only the filename
             fname = Path(fname).name if fname else ""
+            exists = bool(fname) and any(f.is_file() for f in SK_FILES_HOME.rglob(fname))
+            if exists and not confirm(f"Delete '{fname}'?"):
+                return NOT_DELETED
             return delete_file(fname)
 
         case "rename_file":
@@ -415,6 +451,8 @@ def dispatch_tool(tool: str, params: dict) -> str:
             return rename_file(old, new)
 
         case "delete_all" | "rm_all" | "delete_all_files" | "clear_folder" | "clear":
+            if not confirm("Delete ALL the files in sk_files_home?"):
+                return NOT_DELETED
             return delete_all_files()
 
         case "replace_file" | "swap_file":
@@ -425,6 +463,8 @@ def dispatch_tool(tool: str, params: dict) -> str:
                      or params.get("new_name") or "")
             if not old_f or not new_f:
                 return "replace_file: insufficient parameters."
+            if not confirm(f"Delete '{Path(old_f).name}' to replace it with '{Path(new_f).name}'?"):
+                return NOT_DELETED
             r1 = delete_file(Path(old_f).name)
             r2 = create_file(Path(new_f).name, "")
             return f"{r1} | {r2}"
@@ -445,6 +485,9 @@ def dispatch_tool(tool: str, params: dict) -> str:
             dirname = (params.get("dirname") or params.get("foldername")
                        or params.get("name") or params.get("folder") or "")
             force   = bool(params.get("force", False))
+            if dirname and not confirm(f"Delete the folder '{dirname}'"
+                                       + (" and everything in it?" if force else "?")):
+                return NOT_DELETED
             return delete_dir(dirname, force=force)
 
         case "move_dir":
@@ -478,15 +521,14 @@ def dispatch_tool(tool: str, params: dict) -> str:
 
 def dispatch_web_search(params: dict) -> str:
     """
-    Esegue una ricerca DuckDuckGo.
-    Prima ottimizza la query con build_search_query per evitare che il modello
-    passi frasi intere invece di parole chiave brevi.
+    Runs a DuckDuckGo search. The query goes through build_search_query
+    first, so that short keywords are searched instead of whole sentences.
     """
     raw_query = params.get("query") or params.get("q") or params.get("search") or ""
     if not raw_query:
         return "web_search: missing 'query' parameter."
 
-    # Ottimizza la query: da frase intera → 2-5 keywords
+    # Whole sentence → 2-5 keywords
     optimized_query = build_search_query(raw_query)
     print(f"  [query: '{raw_query}' → '{optimized_query}']")
 
@@ -497,19 +539,19 @@ def dispatch_web_search(params: dict) -> str:
 
 def folder_snapshot() -> str:
     """
-    Reads the full tree of SkFiles_home recursively and returns a compact
+    Reads the full tree of sk_files_home recursively and returns a compact
     string to inject into the system prompt.
-    Uses rglob so SkFiles sees files inside subfolders too, not just the top level.
+    Uses rglob so sk_files sees files inside subfolders too, not just the top level.
 
     Example output:
-      SkFiles_home/
+      sk_files_home/
         folder1/
           ciao.txt (0 bytes)
         folder2/
         file1.txt (144 bytes)
     """
     if not SK_FILES_HOME.exists():
-        return "SkFiles_home does not exist yet."
+        return "sk_files_home does not exist yet."
 
     def _tree(path: Path, indent: int) -> list[str]:
         lines = []
@@ -526,23 +568,23 @@ def folder_snapshot() -> str:
 
     tree_lines = _tree(SK_FILES_HOME, 1)
     if not tree_lines:
-        return "SkFiles_home is currently empty."
+        return "sk_files_home is currently empty."
 
-    return "SkFiles_home/\n" + "\n".join(tree_lines)
+    return "sk_files_home/\n" + "\n".join(tree_lines)
 
 
 def inject_snapshot(messages: list, shared: str = "") -> None:
     """
     Updates messages[0] (the system message) in-place with a fresh folder snapshot.
-    Called automatically before every model call so SkFiles always has up-to-date context.
+    Called automatically before every model call so sk_files always has up-to-date context.
 
-    Think of it like this: every time SkFiles is about to speak, we whisper
+    Think of it like this: every time sk_files is about to speak, we whisper
     "hey, here's what's in the folder right now" into its ear first.
     """
     snapshot = folder_snapshot()
     messages[0]["content"] = (
         CHAT_SYSTEM +
-        f"\n\n--- Current state of SkFiles_home ---\n{snapshot}\n---"
+        f"\n\n--- Current state of sk_files_home ---\n{snapshot}\n---"
     )
     if shared:
         messages[0]["content"] += "\n\n" + shared
@@ -554,7 +596,7 @@ def build_initial_messages(memory: dict) -> list:
     """
     Build the startup conversation history with:
     1. System prompt with instructions, tool definitions, and long-term memory.
-    2. Initial snapshot of the SkFiles_home folder (already baked into system message).
+    2. Initial snapshot of the sk_files_home folder (already baked into system message).
     """
     mem_context = memory_to_context(memory)
     system_content = CHAT_SYSTEM
@@ -582,7 +624,7 @@ def build_initial_messages(memory: dict) -> list:
 
 def main():
     print("=" * 57)
-    print(f"  SkFiles - File assistant powered by {MODEL}")
+    print(f"  sk_files - SKAI file assistant, model {MODEL}")
     print(f"  Folder  : {SK_FILES_HOME}")
     print(f"  Limit   : {MAX_FILES} files")
     print(f"  Model   : {MODEL}")
@@ -622,12 +664,12 @@ def main():
         messages.append({"role": "user", "content": clean_input})
 
         # ── Refresh folder snapshot in the system message ─────────────────────
-        # Updates messages[0] with the real current state of SkFiles_home so SkFiles
+        # Updates messages[0] with the real current state of sk_files_home so sk_files
         # always knows what files exist before it even starts thinking.
         inject_snapshot(messages, shared_recall(clean_input))
 
         # ── Ask the model what to do ──────────────────────────────────────────
-        print("SkFiles is thinking...")
+        print("SKAI is thinking...")
 
         if force_text:
             # Plain text mode: direct Ollama response, no retry logic
@@ -645,19 +687,18 @@ def main():
             for tc in tool_calls:
                 tool   = tc["tool"]
                 params = tc.get("params", {})
-                print(f"SkFiles executing: {tool}({params})...")
+                print(f"SKAI executing: {tool}({params})...")
                 result = dispatch_tool(tool, params)
-                print(f"  → {result[:120]}...")  # mostra solo l'inizio per non spammare
+                print(f"  → {result[:120]}...")  # only the beginning, to keep the screen readable
 
                 if tool == "web_search":
-                    # I risultati web non vanno stampati crudi — li rimando al modello
-                    # così SkFiles può leggerli e rispondere in modo naturale all'utente.
+                    # Web results are not printed raw: they go back to the model,
+                    # which reads them and answers the user in plain words.
                     web_results_to_forward.append(result)
                 else:
                     results.append(f"{tool}: {result}")
 
-            # Se c'erano ricerche web, faccio una seconda chiamata al modello
-            # passandogli i risultati come contesto.
+            # After web searches, a second call gives the model the results.
             if web_results_to_forward:
                 context = "\n\n".join(web_results_to_forward)
                 messages.append({
@@ -671,28 +712,28 @@ def main():
                         f"no extra text."
                     ),
                 })
-                print("SkFiles is reading the results...")
+                print("SKAI is reading the results...")
                 final_answer = ask_ollama(messages, temperature=0.3, max_tokens=800)
 
-                # Il modello potrebbe rispondere con un tool call JSON (es. create_file)
-                # oppure con testo normale — controlliamo prima di decidere cosa fare.
+                # The model may answer with a JSON tool call (e.g. create_file)
+                # or with plain text: check which before acting.
                 follow_up_calls = parse_tool_calls(final_answer)
                 if follow_up_calls:
-                    # Se il follow-up è ancora un web_search, blocchiamo il loop:
-                    # significa che il modello non ha trovato nulla e vuole riprovare.
+                    # Another web_search means the model found nothing and wants
+                    # to try again: stop the loop here.
                     if all(ftc["tool"] == "web_search" for ftc in follow_up_calls):
-                        print("\nSkFiles: I couldn't find results for that search. "
+                        print("\nSKAI: I couldn't find results for that search. "
                               "Try rephrasing your question with different keywords.")
                         messages.append({
                             "role": "assistant",
                             "content": "No results found. Asked user to rephrase.",
                         })
                     else:
-                        # È un tool call legittimo (es. create_file) → eseguiamolo
+                        # A real tool call (e.g. create_file): run it
                         for ftc in follow_up_calls:
                             ftool   = ftc["tool"]
                             fparams = ftc.get("params", {})
-                            print(f"SkFiles executing (follow-up): {ftool}({fparams})...")
+                            print(f"SKAI executing (follow-up): {ftool}({fparams})...")
                             fresult = dispatch_tool(ftool, fparams)
                             print(f"  → {fresult}")
                             results.append(f"{ftool}: {fresult}")
@@ -703,11 +744,11 @@ def main():
                             ),
                         })
                 else:
-                    # È testo normale → stampiamolo come risposta di SkFiles
-                    print(f"\nSkFiles: {final_answer}")
+                    # Plain text: it is SKAI's answer
+                    print(f"\nSKAI: {final_answer}")
                     messages.append({"role": "assistant", "content": final_answer})
 
-            # Se c'erano anche tool normali (es. crea file + cerca web), aggiorna la cartella
+            # Other tools ran too (e.g. create a file + search the web): show the folder
             if results:
                 print(f"\n[folder updated]\n{list_files()}")
                 tool_summary = "Operations done: " + " | ".join(results)
@@ -721,7 +762,7 @@ def main():
 
         else:
             # Normal text response (or error message after retries)
-            print(f"\nSkFiles: {llm_response}")
+            print(f"\nSKAI: {llm_response}")
             messages.append({"role": "assistant", "content": llm_response})
             memory = update_memory(memory, clean_input, llm_response, ask_ollama)
             save_memory(memory)

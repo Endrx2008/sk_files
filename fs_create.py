@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Enrico Miot (EndrX)
+# Copyright (C) 2026 Enrico Miot
 # Licensed under GNU GPL v3 or later — see the LICENSE file or <https://www.gnu.org/licenses/>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 def create_file(filename: str, content: str) -> str:
     """
-    Creates a new file in SkFiles_home with the given content.
+    Creates a new file in sk_files_home with the given content.
     - Supports subfolder paths like 'folder1/notes.txt'
     - Appends .txt if the file has no extension.
     - Rejects if MAX_FILES limit is reached.
@@ -21,7 +21,7 @@ def create_file(filename: str, content: str) -> str:
         return f"File limit of {MAX_FILES} reached. Delete something before creating new files."
 
     # Build the full path, keeping any subfolder the model specified
-    # but stripping anything that tries to escape SkFiles_home (e.g. ../../etc)
+    # but stripping anything that tries to escape sk_files_home (e.g. ../../etc)
     rel = Path(filename)
     parts = [p for p in rel.parts if p not in (".", "..")]  # sanitize
     safe_rel = Path(*parts) if parts else Path(filename)
@@ -40,4 +40,4 @@ def create_file(filename: str, content: str) -> str:
 
     fp.write_text(content, encoding="utf-8")
     count = len([f for f in SK_FILES_HOME.rglob("*") if f.is_file()])
-    return f"✅ File '{safe_rel}' created successfully. ({count}/{MAX_FILES} files in SkFiles_home)"
+    return f"✅ File '{safe_rel}' created successfully. ({count}/{MAX_FILES} files in sk_files_home)"

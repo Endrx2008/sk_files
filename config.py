@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Enrico Miot (EndrX)
+# Copyright (C) 2026 Enrico Miot
 # Licensed under GNU GPL v3 or later — see the LICENSE file or <https://www.gnu.org/licenses/>
 # SPDX-License-Identifier: GPL-3.0-or-later
 from pathlib import Path
@@ -16,7 +16,7 @@ OLLAMA_URL = "http://localhost:11434/api/chat"
 # Schreibtisch. The name is not the thing — what actually defines the
 # desktop is the XDG_DESKTOP_DIR entry the desktop environment itself
 # uses to decide which folder to paint icons from. That is what gets
-# read here, so SkFiles_home always lands on the folder the user really
+# read here, so sk_files_home always lands on the folder the user really
 # sees behind their windows.
 
 # Localized names used as a last resort, only when a folder by that
@@ -132,7 +132,7 @@ def get_desktop_dir(create_fallback: bool = True) -> Path:
     xdg-user-dir, the user-dirs.dirs file, then known localized names
     that actually exist on disk. Falls back to ~/Desktop (created on
     demand) only when every source comes up empty — a headless or
-    minimal system with no XDG setup at all. Never raises: SkFiles always
+    minimal system with no XDG setup at all. Never raises: sk_files always
     gets a usable path back."""
     for source in (_desktop_from_env, _desktop_from_xdg_user_dir,
                    _desktop_from_user_dirs_file, _desktop_from_known_names):
@@ -157,8 +157,8 @@ DESKTOP_DIR = get_desktop_dir()
 SK_FILES_HOME   = DESKTOP_DIR / "sk_files_home"
 
 # ─── System prompt ────────────────────────────────────────────────────────────
-CHAT_SYSTEM = """You are SkFiles, a file management assistant.
-You have access to a folder called SkFiles_home to manage text files.
+CHAT_SYSTEM = """You are SKAI, the file assistant of Skorpion OS (sk_files).
+You have access to a folder called sk_files_home to manage text files.
 When the user wants to operate on files, reply ONLY with pure JSON, nothing else:
 {"tool": "TOOL_NAME", "params": {...}}
 Available tools:
@@ -170,7 +170,7 @@ Available tools:
   read_file     → {"filename": "..."}
   move_file     → {"filename": "...", "destination": "subfolder_name"}
   list_files    → {}
-  Folder tools (subfolders inside SkFiles_home only):
+  Folder tools (subfolders inside sk_files_home only):
   create_dir    → {"dirname": "..."}
   rename_dir    → {"old": "...", "new": "..."}
   delete_dir    → {"dirname": "...", "force": true}
@@ -180,10 +180,10 @@ Available tools:
   web_search    → {"query": "2-5 keyword search query"}
 Rules:
 - Do NOT add any text before or after the JSON.
-- Do NOT ask for confirmation before acting.
+- Do NOT ask for confirmation in the chat: before deleting anything the program asks the user itself.
 - For normal conversation reply in American English without JSON.
 - If the user asks to delete all files, use the delete_all tool.
-- Folder tools only work on subfolders of SkFiles_home, never on SkFiles_home itself.
+- Folder tools only work on subfolders of sk_files_home, never on sk_files_home itself.
 - Use web_search when the user asks about current events, facts, or anything
   you don't know for certain. After getting the results, reply in plain text.
 - For web_search, NEVER copy the user's sentence as the query.
@@ -215,7 +215,7 @@ TOOL_NAMES = {
 
 
 if __name__ == "__main__":
-    # Quick self-check: python3 config.py prints where SkFiles will work.
+    # Quick self-check: python3 config.py prints where sk_files will work.
     print("XDG_DESKTOP_DIR env :", os.environ.get("XDG_DESKTOP_DIR"))
     print("xdg-user-dir        :", _desktop_from_xdg_user_dir())
     print("user-dirs.dirs      :", _desktop_from_user_dirs_file())

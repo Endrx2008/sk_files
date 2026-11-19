@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Enrico Miot (EndrX)
+# Copyright (C) 2026 Enrico Miot
 # Licensed under GNU GPL v3 or later — see the LICENSE file or <https://www.gnu.org/licenses/>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 def rename_file(old: str, new: str) -> str:
     """
-    Renames a file anywhere inside SkFiles_home (including subfolders).
+    Renames a file anywhere inside sk_files_home (including subfolders).
     Searches recursively so the user doesn't need to specify the full path.
     If the new name has no extension, it inherits the original file's extension.
     """
@@ -17,11 +17,11 @@ def rename_file(old: str, new: str) -> str:
 
     old_name = Path(old).name  # strip any path, take just the filename
 
-    # Search recursively for the file anywhere in SkFiles_home
+    # Search recursively for the file anywhere in sk_files_home
     matches = [f for f in SK_FILES_HOME.rglob(old_name) if f.is_file()]
 
     if not matches:
-        return f"File '{old_name}' not found anywhere in SkFiles_home."
+        return f"File '{old_name}' not found anywhere in sk_files_home."
 
     if len(matches) > 1:
         paths = ", ".join(str(m.relative_to(SK_FILES_HOME)) for m in matches)

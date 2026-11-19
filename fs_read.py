@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Enrico Miot (EndrX)
+# Copyright (C) 2026 Enrico Miot
 # Licensed under GNU GPL v3 or later — see the LICENSE file or <https://www.gnu.org/licenses/>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 def read_file(filename: str) -> str:
     """
-    Reads and returns the content of a file anywhere in SkFiles_home (including subfolders).
+    Reads and returns the content of a file anywhere in sk_files_home (including subfolders).
     Searches recursively so the user doesn't need to specify the full path.
     """
     if not filename:
@@ -18,7 +18,7 @@ def read_file(filename: str) -> str:
     matches = [f for f in SK_FILES_HOME.rglob(name) if f.is_file()]
 
     if not matches:
-        return f"File '{name}' not found anywhere in SkFiles_home."
+        return f"File '{name}' not found anywhere in sk_files_home."
 
     if len(matches) > 1:
         paths = ", ".join(str(m.relative_to(SK_FILES_HOME)) for m in matches)
@@ -29,10 +29,10 @@ def read_file(filename: str) -> str:
 
 def list_files() -> str:
     """
-    Returns a full recursive tree of SkFiles_home with folders and files.
+    Returns a full recursive tree of sk_files_home with folders and files.
     """
     if not SK_FILES_HOME.exists():
-        return "The SkFiles_home folder does not exist yet."
+        return "The sk_files_home folder does not exist yet."
 
     def _tree(path: Path, indent: int) -> list[str]:
         lines = []
@@ -48,9 +48,9 @@ def list_files() -> str:
 
     tree_lines = _tree(SK_FILES_HOME, 1)
     if not tree_lines:
-        return "The SkFiles_home folder is empty."
+        return "The sk_files_home folder is empty."
 
     all_files = [f for f in SK_FILES_HOME.rglob("*") if f.is_file()]
     all_dirs  = [d for d in SK_FILES_HOME.rglob("*") if d.is_dir()]
-    header = f"📁 SkFiles_home ({len(all_files)} files, {len(all_dirs)} subfolders):"
+    header = f"📁 sk_files_home ({len(all_files)} files, {len(all_dirs)} subfolders):"
     return header + "\n" + "\n".join(tree_lines)

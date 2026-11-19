@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Enrico Miot (EndrX)
+# Copyright (C) 2026 Enrico Miot
 # Licensed under GNU GPL v3 or later — see the LICENSE file or <https://www.gnu.org/licenses/>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -8,14 +8,14 @@ from pathlib import Path
 
 def create_dir(dirname: str) -> str:
     """
-    Creates a new subfolder inside SkFiles_home.
+    Creates a new subfolder inside sk_files_home.
     Supports nested paths like 'folder1/subfolder'.
-    Sanitizes the path to prevent escaping SkFiles_home.
+    Sanitizes the path to prevent escaping sk_files_home.
     """
     if not dirname:
         return "Error: no folder name specified."
 
-    # Sanitize: remove any '..' components that could escape SkFiles_home
+    # Sanitize: remove any '..' components that could escape sk_files_home
     rel = Path(dirname)
     parts = [p for p in rel.parts if p not in (".", "..")]
     if not parts:
@@ -25,7 +25,7 @@ def create_dir(dirname: str) -> str:
     dp = SK_FILES_HOME / safe_rel
 
     if dp == SK_FILES_HOME:
-        return "Error: cannot use SkFiles_home itself as target."
+        return "Error: cannot use sk_files_home itself as target."
 
     if dp.exists():
         return f"A folder named '{safe_rel}' already exists."
@@ -36,7 +36,7 @@ def create_dir(dirname: str) -> str:
 
 def rename_dir(old: str, new: str) -> str:
     """
-    Renames a subfolder inside SkFiles_home.
+    Renames a subfolder inside sk_files_home.
     """
     if not old or not new:
         return "Error: both old and new folder names are required."
@@ -59,7 +59,7 @@ def rename_dir(old: str, new: str) -> str:
 
 def delete_dir(dirname: str, force: bool = False) -> str:
     """
-    Deletes a subfolder inside SkFiles_home.
+    Deletes a subfolder inside sk_files_home.
     If the folder is not empty, requires force=True to delete recursively.
     """
     if not dirname:
@@ -89,16 +89,16 @@ def delete_dir(dirname: str, force: bool = False) -> str:
 
 def list_dirs() -> str:
     """
-    Lists all subfolders inside SkFiles_home with their item count.
+    Lists all subfolders inside sk_files_home with their item count.
     """
     if not SK_FILES_HOME.exists():
-        return "SkFiles_home does not exist yet."
+        return "sk_files_home does not exist yet."
 
     dirs = sorted(d for d in SK_FILES_HOME.rglob("*") if d.is_dir())
     if not dirs:
-        return "No subfolders in SkFiles_home."
+        return "No subfolders in sk_files_home."
 
-    lines = [f"📂 Subfolders in SkFiles_home ({len(dirs)}):"]
+    lines = [f"📂 Subfolders in sk_files_home ({len(dirs)}):"]
     for d in dirs:
         count = len(list(d.iterdir()))
         rel = d.relative_to(SK_FILES_HOME)
@@ -108,9 +108,9 @@ def list_dirs() -> str:
 
 def move_dir(dirname: str, destination: str) -> str:
     """
-    Moves a subfolder into another subfolder inside SkFiles_home.
+    Moves a subfolder into another subfolder inside sk_files_home.
     Example: move_dir("new_subfolder", "new_folder")
-    moves SkFiles_home/new_subfolder → SkFiles_home/new_folder/new_subfolder
+    moves sk_files_home/new_subfolder → sk_files_home/new_folder/new_subfolder
     """
     import shutil
 
@@ -120,10 +120,10 @@ def move_dir(dirname: str, destination: str) -> str:
     src_name  = Path(dirname).name
     dest_name = Path(destination).name
 
-    # Find the source dir anywhere in SkFiles_home
+    # Find the source dir anywhere in sk_files_home
     matches = [d for d in SK_FILES_HOME.rglob(src_name) if d.is_dir()]
     if not matches:
-        return f"Folder '{src_name}' not found anywhere in SkFiles_home."
+        return f"Folder '{src_name}' not found anywhere in sk_files_home."
     if len(matches) > 1:
         paths = ", ".join(str(m.relative_to(SK_FILES_HOME)) for m in matches)
         return f"Multiple folders named '{src_name}' found: {paths}. Be more specific."

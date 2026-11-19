@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Enrico Miot (EndrX)
+# Copyright (C) 2026 Enrico Miot
 # Licensed under GNU GPL v3 or later — see the LICENSE file or <https://www.gnu.org/licenses/>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -6,18 +6,18 @@ import re
 import requests
 
 
-# ─── Costanti ─────────────────────────────────────────────────────────────────
+# ─── Constants ────────────────────────────────────────────────────────────────
 
-# Endpoint JSON di DuckDuckGo (instant answers, tipo Wikipedia)
+# DuckDuckGo JSON endpoint (instant answers, e.g. from Wikipedia)
 DDGO_API_URL  = "https://api.duckduckgo.com/"
 
-# Endpoint HTML di DuckDuckGo (risultati di ricerca normali)
+# DuckDuckGo HTML endpoint (normal search results)
 DDGO_HTML_URL = "https://html.duckduckgo.com/html/"
 
-# Quanti risultati mostrare al massimo (per non sovraccaricare il modello)
+# At most this many results (more would only fill the model's context)
 MAX_RESULTS = 5
 
-# User-Agent: ci presentiamo come un browser normale, altrimenti DDG ci blocca
+# User-Agent of a normal browser: DuckDuckGo blocks unknown clients
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -27,12 +27,11 @@ HEADERS = {
 }
 
 
-# ─── Livello 1: API JSON ───────────────────────────────────────────────────────
+# ─── Level 1: JSON API ────────────────────────────────────────────────────────
 
 def _search_json(query: str) -> list[str]:
     """
-    Interroga l'API JSON di DuckDuckGo.
-    Restituisce una lista di stringhe con i risultati, oppure [] se non trova nulla.
+    Asks DuckDuckGo's JSON API. Returns the results as strings, [] for none.
     """
     params = {
         "q": query.strip(),
@@ -44,111 +43,106 @@ def _search_json(query: str) -> list[str]:
     response.raise_for_status()
     data = response.json()
 
-    risultati = []
+    results = []
 
-    # AbstractText = riassunto diretto (es. da Wikipedia)
+    # AbstractText = a direct summary (e.g. from Wikipedia)
     abstract = data.get("AbstractText", "").strip()
     abstract_source = data.get("AbstractSource", "")
     if abstract:
-        risultati.append(f"📖 [{abstract_source}] {abstract}")
+        results.append(f"📖 [{abstract_source}] {abstract}")
 
-    # RelatedTopics = argomenti correlati
+    # RelatedTopics = related subjects
     for topic in data.get("RelatedTopics", []):
         if "Text" not in topic:
             continue
-        testo = topic.get("Text", "").strip()
-        url   = topic.get("FirstURL", "")
-        if testo:
-            risultati.append(f"• {testo}  →  {url}")
-        if len(risultati) >= MAX_RESULTS:
+        text = topic.get("Text", "").strip()
+        url  = topic.get("FirstURL", "")
+        if text:
+            results.append(f"• {text}  →  {url}")
+        if len(results) >= MAX_RESULTS:
             break
 
-    return risultati
+    return results
 
 
-# ─── Livello 2: scraping HTML ─────────────────────────────────────────────────
+# ─── Level 2: HTML page ───────────────────────────────────────────────────────
 
 def _search_html(query: str) -> list[str]:
     """
-    Fa scraping della pagina HTML di DuckDuckGo come fallback.
-    Estrae titoli e snippet dei risultati organici.
-    Restituisce una lista di stringhe, oppure [] se non trova nulla.
+    Fallback: reads DuckDuckGo's HTML results page (titles and snippets of
+    the organic results). Returns the results as strings, [] for none.
     """
-    params = {"q": query.strip(), "kl": "it-it"}
+    params = {"q": query.strip(), "kl": "wt-wt"}  # wt-wt: no region
     response = requests.post(DDGO_HTML_URL, data=params, headers=HEADERS, timeout=10)
     response.raise_for_status()
     html = response.text
 
-    risultati = []
+    results = []
 
-    # Estrae i blocchi risultato: ogni risultato è dentro <div class="result__body">
-    # Titolo:   <a class="result__a" href="...">TITOLO</a>
-    # Snippet:  <a class="result__snippet">TESTO</a>
-    titoli   = re.findall(r'class="result__a"[^>]*>(.*?)</a>', html)
+    # Every result is inside <div class="result__body">:
+    # Title:    <a class="result__a" href="...">TITLE</a>
+    # Snippet:  <a class="result__snippet">TEXT</a>
+    titles   = re.findall(r'class="result__a"[^>]*>(.*?)</a>', html)
     snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', html, re.DOTALL)
     urls     = re.findall(r'result__url[^>]*>\s*(.*?)\s*<', html)
 
-    # Puliamo l'HTML residuo (tag, &amp; ecc.)
+    # Remove what is left of the HTML (tags, &amp; …)
     def strip_html(s: str) -> str:
         s = re.sub(r'<[^>]+>', '', s)
         s = s.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&#x27;', "'")
         return s.strip()
 
-    for i in range(min(len(titoli), len(snippets), MAX_RESULTS)):
-        titolo  = strip_html(titoli[i])
+    for i in range(min(len(titles), len(snippets), MAX_RESULTS)):
+        title   = strip_html(titles[i])
         snippet = strip_html(snippets[i])
         url     = urls[i].strip() if i < len(urls) else ""
-        if titolo and snippet:
-            risultati.append(f"• {titolo}\n  {snippet}\n  → {url}")
+        if title and snippet:
+            results.append(f"• {title}\n  {snippet}\n  → {url}")
 
-    return risultati
+    return results
 
 
-# ─── Funzione principale ───────────────────────────────────────────────────────
+# ─── Main function ────────────────────────────────────────────────────────────
 
 def web_search(query: str) -> str:
     """
-    Esegue una ricerca su DuckDuckGo e restituisce i risultati come stringa.
-    Prima prova l'API JSON; se non trova nulla, usa lo scraping HTML.
+    Searches DuckDuckGo and returns the results as text: the JSON API first,
+    the HTML page when the API has nothing.
 
-    Parametri:
-        query (str): la cosa da cercare, es. "Pipino il Breve"
-
-    Restituisce:
-        str: testo con i risultati della ricerca (o un messaggio di errore)
+    query: what to look for, e.g. "Pepin the Short"
+    Returns the results, or an error message.
     """
     if not query or not query.strip():
-        return "Errore: devi specificare cosa cercare."
+        return "Error: say what to search for."
 
     try:
-        # ── Tentativo 1: API JSON ──────────────────────────────────────────────
-        risultati = _search_json(query)
+        # ── Attempt 1: JSON API ────────────────────────────────────────────────
+        results = _search_json(query)
 
-        # ── Tentativo 2: scraping HTML (fallback) ──────────────────────────────
-        if not risultati:
-            print("  [web] API JSON vuota, provo scraping HTML...")
-            risultati = _search_html(query)
+        # ── Attempt 2: HTML page (fallback) ────────────────────────────────────
+        if not results:
+            print("  [web] the JSON API had nothing, trying the HTML page...")
+            results = _search_html(query)
 
     except requests.exceptions.ConnectionError:
-        return "Errore: nessuna connessione internet disponibile."
+        return "Error: no internet connection."
     except requests.exceptions.Timeout:
-        return "Errore: DuckDuckGo ha impiegato troppo tempo a rispondere."
+        return "Error: DuckDuckGo took too long to answer."
     except Exception as e:
-        return f"Errore durante la ricerca: {e}"
+        return f"Error while searching: {e}"
 
-    # ── Nessun risultato trovato nemmeno con l'HTML ────────────────────────────
-    if not risultati:
+    # ── Nothing found, not even on the HTML page ───────────────────────────────
+    if not results:
         return (
-            f"Nessun risultato trovato per: '{query}'.\n"
-            f"Prova con parole chiave diverse o più semplici."
+            f"No results for: '{query}'.\n"
+            f"Try different or simpler keywords."
         )
 
-    intestazione = f"🔍 Risultati ricerca per: \"{query}\"\n" + "─" * 40
-    return intestazione + "\n" + "\n\n".join(risultati)
+    header = f"🔍 Search results for: \"{query}\"\n" + "─" * 40
+    return header + "\n" + "\n\n".join(results)
 
 
-# ─── Test rapido (eseguibile direttamente: python web_access.py) ───────────────
+# ─── Quick test: python3 web_access.py ────────────────────────────────────────
 
 if __name__ == "__main__":
-    risultato = web_search("Pipino il Breve")
-    print(risultato)
+    print(web_search("Pepin the Short"))

@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Enrico Miot (EndrX)
+# Copyright (C) 2026 Enrico Miot
 # Licensed under GNU GPL v3 or later — see the LICENSE file or <https://www.gnu.org/licenses/>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -6,13 +6,14 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-# ─── Costanti ─────────────────────────────────────────────────────────────────
+# ─── Constants ────────────────────────────────────────────────────────────────
 
-# Il file di memoria si trova nella stessa cartella dello script (non in SkFiles_home),
-# così l'AI non può accedervi né eliminarlo per sbaglio durante le operazioni sui file.
-MEMORY_FILE = Path(__file__).parent / ".SkFiles_memory.json"
+# The memory file sits next to the script (not in sk_files_home), so the AI
+# cannot read or delete it by mistake while it works on the files.
+MEMORY_FILE = Path(__file__).parent / ".sk_files_memory.json"
+_OLD_MEMORY_FILE = Path(__file__).parent / ".SkFiles_memory.json"  # name used before
 
-# Struttura di default della memoria
+# Default structure of the memory
 _DEFAULT_MEMORY: dict = {
     "user": {
         "name": None,
@@ -27,7 +28,7 @@ _DEFAULT_MEMORY: dict = {
     "last_updated": None
 }
 
-# System prompt per il memory extractor (separato dal chat system per non confondere il modello)
+# System prompt of the memory extractor (kept apart from the chat prompt so the model is not confused)
 _MEMORY_SYSTEM = """You are a memory extractor. Analyze the conversation and extract ONLY new, durable facts worth remembering long-term.
 
 Reply ONLY with a valid JSON object using this exact structure (omit keys if nothing new):
@@ -56,27 +57,31 @@ Rules:
 
 def load_memory() -> dict:
     """
-    Carica la memoria da disco. Se il file non esiste o è corrotto,
-    restituisce la struttura di default.
+    Loads the memory from disk; the default structure when the file is
+    missing or damaged. A file with the old name is renamed first.
     """
+    if not MEMORY_FILE.exists() and _OLD_MEMORY_FILE.exists():
+        try:
+            _OLD_MEMORY_FILE.rename(MEMORY_FILE)
+        except OSError:
+            pass
     if not MEMORY_FILE.exists():
         return _build_fresh_memory()
 
     try:
         data = json.loads(MEMORY_FILE.read_text(encoding="utf-8"))
-        # Merge con default per garantire che tutte le chiavi esistano
+        # Merge with the defaults so that every key exists
         merged = _build_fresh_memory()
         _deep_merge(merged, data)
         return merged
     except (json.JSONDecodeError, Exception):
-        print("  [memory] File corrotto, ripart da zero.")
+        print("  [memory] The memory file is damaged: starting again from empty.")
         return _build_fresh_memory()
 
 
 def save_memory(memory: dict) -> None:
     """
-    Salva la memoria su disco in formato JSON leggibile.
-    Crea la cartella genitore se non esiste.
+    Saves the memory to disk as readable JSON, creating the folder if needed.
     """
     memory["last_updated"] = datetime.now().isoformat(timespec="seconds")
     MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -90,8 +95,8 @@ def save_memory(memory: dict) -> None:
 
 def memory_to_context(memory: dict) -> str:
     """
-    Converte la memoria in un blocco di testo da iniettare nel system prompt.
-    Restituisce stringa vuota se la memoria è completamente vuota.
+    Turns the memory into a block of text for the system prompt; an empty
+    string when the memory is empty.
     """
     lines = []
 
@@ -115,24 +120,24 @@ def memory_to_context(memory: dict) -> str:
     if not lines:
         return ""
 
-    return "--- SkFiles's memory (from previous sessions) ---\n" + "\n".join(lines) + "\n---"
+    return "--- Your memory from previous sessions ---\n" + "\n".join(lines) + "\n---"
 
 
 # ─── Memory Update ────────────────────────────────────────────────────────────
 
 def update_memory(memory: dict, user_input: str, assistant_reply: str, ask_ollama_fn) -> dict:
     """
-    Analizza lo scambio user/assistant e aggiorna la memoria con nuovi fatti.
+    Reads one user/assistant exchange and adds the new facts to the memory.
 
-    Parametri:
-        memory          : dizionario memoria corrente
-        user_input      : messaggio dell'utente in questo turno
-        assistant_reply : risposta di SkFiles in questo turno
-        ask_ollama_fn   : funzione ask_ollama da main.py (passata per evitare import ciclici)
+    Parameters:
+        memory          : the current memory
+        user_input      : what the user wrote in this turn
+        assistant_reply : SKAI's reply in this turn
+        ask_ollama_fn   : ask_ollama from main.py (passed in to avoid an import cycle)
 
-    Restituisce il dizionario memoria aggiornato (modificato in-place e restituito).
+    Returns the memory, changed in place.
     """
-    # Prepara il contesto per il memory extractor
+    # Context for the memory extractor
     current_memory_str = json.dumps(memory, ensure_ascii=False, indent=2)
 
     msgs = [
@@ -141,13 +146,13 @@ def update_memory(memory: dict, user_input: str, assistant_reply: str, ask_ollam
             f"Current memory:\n{current_memory_str}\n\n"
             f"New exchange:\n"
             f"User: {user_input}\n"
-            f"SkFiles: {assistant_reply[:500]}"  # tronca per non sprecare token
+            f"Assistant: {assistant_reply[:500]}"  # cut short to save tokens
         )},
     ]
 
     raw = ask_ollama_fn(msgs, temperature=0.0, max_tokens=300)
 
-    # Rimuovi eventuali backtick markdown
+    # Drop Markdown backticks, if any
     raw = raw.strip().strip("`").strip()
     if raw.startswith("json"):
         raw = raw[4:].strip()
@@ -155,12 +160,12 @@ def update_memory(memory: dict, user_input: str, assistant_reply: str, ask_ollam
     try:
         updates = json.loads(raw)
     except (json.JSONDecodeError, Exception):
-        return memory  # nessun aggiornamento se il modello non risponde con JSON valido
+        return memory  # no update when the model does not answer valid JSON
 
     if not updates:
-        return memory  # {} → niente di nuovo
+        return memory  # {} → nothing new
 
-    # Applica gli aggiornamenti
+    # Apply the updates
     user_mem = memory.setdefault("user", {})
     ctx_mem  = memory.setdefault("context", {})
 
@@ -199,7 +204,7 @@ def update_memory(memory: dict, user_input: str, assistant_reply: str, ask_ollam
         old = memory.get("history_summary") or ""
         new_bit = updates["history_summary_update"]
         if old:
-            # Mantieni le ultime 3 frasi per non crescere all'infinito
+            # Keep the last 3 sentences so the summary does not grow forever
             sentences = [s.strip() for s in (old + " " + new_bit).split(".") if s.strip()]
             memory["history_summary"] = ". ".join(sentences[-3:]) + "."
         else:
@@ -211,7 +216,7 @@ def update_memory(memory: dict, user_input: str, assistant_reply: str, ask_ollam
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _build_fresh_memory() -> dict:
-    """Restituisce una copia fresh della struttura di default."""
+    """A fresh copy of the default structure."""
     import copy
     return copy.deepcopy(_DEFAULT_MEMORY)
 
