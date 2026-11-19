@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+.sk_files_memory.json
+.SkFiles_memory.json
